@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── ANTHROPIC PROXY CON STREAMING ──
+  // ── ANTHROPIC PROXY ──
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
@@ -46,27 +46,35 @@ export default async function handler(req, res) {
       return res.status(anthropicRes.status).json(err);
     }
 
-    // Stream SSE directo al cliente
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
+    // Leer stream completo y reconstruir respuesta JSON normal
     const reader = anthropicRes.body.getReader();
     const decoder = new TextDecoder();
+    let fullText = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-      // Reenviar cada chunk SSE al cliente tal cual
-      res.write(chunk);
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const event = JSON.parse(data);
+          if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+            fullText += event.delta.text;
+          }
+        } catch(e) {}
+      }
     }
 
-    res.end();
+    // Devolver JSON normal como siempre esperó el frontend
+    return res.status(200).json({
+      content: [{ type: 'text', text: fullText }]
+    });
 
   } catch (err) {
-    // Si ya empezamos a hacer stream, no podemos cambiar el status
-    try { res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`); } catch(e) {}
-    res.end();
+    return res.status(500).json({ error: err.message });
   }
 }
