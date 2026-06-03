@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   try {
     const body = { ...req.body };
     body.model = 'claude-sonnet-4-5';
-    body.max_tokens = 8000;
+    body.max_tokens = 3000;
     body.stream = true;
 
     if (!body.tools) {
