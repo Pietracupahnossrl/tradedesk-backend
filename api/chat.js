@@ -1,16 +1,31 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // ── YAHOO FINANCE PROXY ──
+  if (req.method === 'GET' && req.query.yahoo) {
+    try {
+      const { yahoo: ticker, interval = '1d', range = '1y' } = req.query;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`;
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      const data = await response.json();
+      return res.status(200).json(data);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── ANTHROPIC PROXY ──
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const body = { ...req.body };
-    // Remove web search tool if present - use standard model without it
     if (body.tools) delete body.tools;
-    // Ensure correct model name
     body.model = 'claude-sonnet-4-5';
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
